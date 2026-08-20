@@ -1,0 +1,9 @@
+# relay-etcd binaries left by `go build` — one for a build from the module
+# root, one for a build inside the command's own directory. Both are named
+# after the directory they land in, so neither pattern can be relaxed into the
+# other without also ignoring the source directory itself.
+/relay-etcd
+/cmd/relay-etcd/relay-etcd
+
+# Coverage artefacts.
+coverage.*

@@ -1,13 +1,11 @@
-module github.com/floatdrop/moq-go/pkg/relay/discovery/etcd
+module github.com/floatdrop/moq-relay-etcd
 
 go 1.27
 
 toolchain go1.27.0
 
-replace github.com/floatdrop/moq-go => ../../../..
-
 require (
-	github.com/floatdrop/moq-go v0.0.0-00010101000000-000000000000
+	github.com/floatdrop/moq-go v0.0.0-20260820084322-c3aae82bb411
 	github.com/prometheus/client_golang v1.23.2
 	go.etcd.io/etcd/client/v3 v3.7.1
 	go.etcd.io/etcd/server/v3 v3.7.1

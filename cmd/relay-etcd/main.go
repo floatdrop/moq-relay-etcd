@@ -74,7 +74,7 @@ import (
 
 	"github.com/floatdrop/moq-go/pkg/moqt/session"
 	"github.com/floatdrop/moq-go/pkg/relay"
-	"github.com/floatdrop/moq-go/pkg/relay/discovery/etcd"
+	"github.com/floatdrop/moq-relay-etcd"
 	"github.com/floatdrop/moq-go/pkg/relay/relaynet"
 )
 

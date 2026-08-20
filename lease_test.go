@@ -9,7 +9,7 @@ import (
 	clientv3 "go.etcd.io/etcd/client/v3"
 
 	"github.com/floatdrop/moq-go/pkg/relay/discovery"
-	etcdstore "github.com/floatdrop/moq-go/pkg/relay/discovery/etcd"
+	etcdstore "github.com/floatdrop/moq-relay-etcd"
 )
 
 // TestEtcdLease exercises the lease-based liveness that binds a store's

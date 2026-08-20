@@ -15,7 +15,7 @@ import (
 	"github.com/floatdrop/moq-go/pkg/moqt/session/sessiontest"
 	"github.com/floatdrop/moq-go/pkg/moqt/wire"
 	"github.com/floatdrop/moq-go/pkg/relay"
-	etcdstore "github.com/floatdrop/moq-go/pkg/relay/discovery/etcd"
+	etcdstore "github.com/floatdrop/moq-relay-etcd"
 )
 
 // TestCrossRelayEtcd_OnDemandSubscribe is the end-to-end proof that the etcd

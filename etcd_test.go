@@ -13,7 +13,7 @@ import (
 	"github.com/floatdrop/moq-go/pkg/moqt/track"
 	"github.com/floatdrop/moq-go/pkg/moqt/wire"
 	"github.com/floatdrop/moq-go/pkg/relay/discovery"
-	etcdstore "github.com/floatdrop/moq-go/pkg/relay/discovery/etcd"
+	etcdstore "github.com/floatdrop/moq-relay-etcd"
 )
 
 // One embedded etcd + one client back every subtest; each Store gets a unique

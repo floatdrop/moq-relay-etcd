@@ -10,7 +10,7 @@ import (
 
 	"github.com/floatdrop/moq-go/pkg/moqt/track"
 	"github.com/floatdrop/moq-go/pkg/relay/discovery"
-	etcdstore "github.com/floatdrop/moq-go/pkg/relay/discovery/etcd"
+	etcdstore "github.com/floatdrop/moq-relay-etcd"
 )
 
 // newStoreAndClient returns a Store scoped to prefix plus the raw etcd client

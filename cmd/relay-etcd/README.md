@@ -5,14 +5,12 @@ A MOQT relay whose cross-instance discovery is backed by an
 across each other. Each relay advertises its local tracks and namespaces into
 etcd and follows peers' advertisements on demand.
 
-It is a separate binary from `cmd/relay`, and lives in its own Go module
-(`pkg/relay/discovery/etcd`), because the etcd client pulls in a large
-dependency tree (gRPC, bbolt, zap, protobuf) that the core `moq-go` module
-deliberately excludes. Only operators who opt into etcd-backed discovery pay for
-that weight. Run it from inside the module:
+It is a separate binary from moq-go's own `cmd/relay`, and lives in its own
+repository, because the etcd client pulls in a large dependency tree (gRPC,
+bbolt, zap, protobuf) that the core `moq-go` module deliberately excludes. Only
+operators who opt into etcd-backed discovery pay for that weight.
 
 ```sh
-cd pkg/relay/discovery/etcd
 go run ./cmd/relay-etcd [flags]
 ```
 
