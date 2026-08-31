@@ -5,8 +5,9 @@ go 1.27
 toolchain go1.27.0
 
 require (
-	github.com/floatdrop/moq-go v0.0.0-20260820084322-c3aae82bb411
+	github.com/floatdrop/moq-go v0.0.0-20260831080701-912a67f198be
 	github.com/prometheus/client_golang v1.23.2
+	github.com/quic-go/quic-go v0.61.0
 	go.etcd.io/etcd/client/v3 v3.7.1
 	go.etcd.io/etcd/server/v3 v3.7.1
 )
@@ -35,7 +36,6 @@ require (
 	github.com/prometheus/common v0.67.5 // indirect
 	github.com/prometheus/procfs v0.16.1 // indirect
 	github.com/quic-go/qpack v0.6.0 // indirect
-	github.com/quic-go/quic-go v0.61.0 // indirect
 	github.com/quic-go/webtransport-go v0.12.0 // indirect
 	github.com/sirupsen/logrus v1.9.4 // indirect
 	github.com/soheilhy/cmux v0.1.5 // indirect
@@ -73,3 +73,5 @@ require (
 	k8s.io/utils v0.0.0-20260108192941-914a6e750570 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
+
+replace github.com/quic-go/quic-go => github.com/floatdrop/quic-go v0.0.0-20260831085819-d8e684e730a7

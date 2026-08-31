@@ -57,6 +57,8 @@ nothing to pass at build time. Three things to know when reading it:
 | `-health-path` | `/healthz` | Path on `-health-addr` that answers `200 OK`; anything else there gets `404`. Ignored unless `-health-addr` is set. |
 | `-metrics` | `true` | Serve Prometheus metrics at `<health-path>/metrics`. Requires `-health-addr`. |
 | `-metrics-track-names` | `catalog,video,audio` | Track names that keep their own `track` label. Every other name is counted as `track="other"`, so a publisher cannot choose this process's metric cardinality. |
+| `-congestion` | `bbr` | Congestion controller for downstream (client-facing) connections: `bbr`, `reno` or `cubic`. See [Congestion control](#congestion-control). |
+| `-upstream-congestion` | — | Congestion controller for cross-relay upstream dials. Empty (the default) means the same as `-congestion`. |
 
 ## Transports
 
@@ -271,6 +273,17 @@ drop and the subscriber still sees the hole), and `inbound_reset` means the loss
 happened upstream of this relay — chase it on the instance one hop closer to the
 publisher.
 
+### Congestion control is upstream of both counters
+
+Both counters above measure the *application* queue: the relay drops an object
+when a subscriber's send queue is full, and terminates a subscription when an
+object waits in that queue longer than `MaxFanoutLag`. What drains that queue is
+QUIC's congestion controller, so a controller that misreads the path shows up
+here as dropped media rather than as a slower transfer.
+
+This is why `-congestion` exists, and why it is per leg — see
+[Congestion control](#congestion-control) below.
+
 ### Cardinality
 
 Both `track` and `subgroup` come off the wire, chosen by the publisher, so
@@ -278,6 +291,50 @@ neither reaches a label unfiltered. Track names outside `-metrics-track-names`
 are counted as `track="other"`; Subgroup IDs of 3 and above are counted as
 `subgroup="3+"`. The peer address in a failed upstream dial is deliberately not
 a label at all — it is in the `debug` log instead.
+
+## Congestion control
+
+The relay's two legs sit on different paths, so they select their controller
+separately:
+
+```sh
+# BBRv3 downstream (the default), Reno on cross-relay legs
+go run ./cmd/relay-etcd -congestion bbr -upstream-congestion reno
+```
+
+`-congestion` covers connections to clients, over whatever last mile they have.
+`-upstream-congestion` covers cross-relay dials, which usually run over a clean
+datacenter path where the choice matters much less; leaving it empty tracks
+`-congestion`, so "use X everywhere" stays one flag.
+
+**Why the default is BBRv3.** Reno treats every lost packet as congestion and
+halves its window. On a path that loses or reorders packets for reasons that are
+not congestion — wifi, cellular, a bonded 4G/5G link, a tunnel — that pins the
+window near its floor, the per-subscriber send queues stop draining, and the
+symptom reaching a viewer is dropped objects and `too_far_behind` terminations
+rather than a slower transfer. BBR paces at a gain-scaled multiple of the
+delivery rate it measures and treats loss under 2% as noise, so it holds a
+useful window on such a path. It also targets a shorter queue at the bottleneck,
+which matters for a live media relay independently of throughput.
+
+The trade is real: on a *clean* path with a deep buffer, BBR gives up a few
+percent of throughput relative to Reno in exchange for roughly half the queueing
+delay. For live media that is the right side of the trade, but it is a trade.
+
+**Comparing them.** Both flags are recorded in the `relay-etcd listening` log
+line, so an A/B is readable after the fact. Run two instances, point a share of
+traffic at each, and compare the counters from
+[When the picture breaks up between keyframes](#when-the-picture-breaks-up-between-keyframes)
+— `moqt_relay_objects_dropped_total` and the `too_far_behind` cause on
+`moqt_relay_subgroup_stream_resets_total` are the two that move. Bulk-transfer
+throughput is the wrong measurement here: it is never application-limited, which
+is exactly the regime a live relay spends its time in.
+
+**This needs the fork.** `quic.Config.Congestion` is not a field upstream
+quic-go has; the module's `replace` directive points at
+[floatdrop/quic-go](https://github.com/floatdrop/quic-go) on the `bbrv3` branch,
+which adds BBRv3 and the hook that selects it. Dropping the replace directive
+will not compile.
 
 ## Security
 

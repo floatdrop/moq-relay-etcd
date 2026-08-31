@@ -74,8 +74,8 @@ import (
 
 	"github.com/floatdrop/moq-go/pkg/moqt/session"
 	"github.com/floatdrop/moq-go/pkg/relay"
-	"github.com/floatdrop/moq-relay-etcd"
 	"github.com/floatdrop/moq-go/pkg/relay/relaynet"
+	"github.com/floatdrop/moq-relay-etcd"
 )
 
 func main() {
@@ -122,6 +122,10 @@ func run(ctx context.Context, args []string, errOut io.Writer) error {
 		"HTTP/3 path browsers use for the WebTransport CONNECT (raw QUIC ignores it)")
 	healthAddr := fs.String("health-addr", "",
 		"TCP address for the HTTP health endpoint; empty (the default) disables it")
+	congestion := fs.String("congestion", "bbr",
+		"congestion controller for downstream (client-facing) connections: bbr, reno, or cubic")
+	upstreamCongestion := fs.String("upstream-congestion", "",
+		"congestion controller for cross-relay upstream dials; empty (the default) means the same as -congestion")
 	// A relay serving MSF has to keep catalogs longer than media. A catalog is
 	// published once on join and republished only when a participant's tracks
 	// change, so on the default 30-second retention it is evicted within the
@@ -204,7 +208,25 @@ func run(ctx context.Context, args []string, errOut io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("build TLS config: %w", err)
 	}
-	listener, err := relaynet.Listen(*addr, *wtPath, tlsCfg, logger)
+
+	// Resolve both controllers before anything is opened, so a typo fails at
+	// startup rather than on the first connection to reach that leg. An empty
+	// -upstream-congestion tracks -congestion, so the common case of "use X
+	// everywhere" stays one flag.
+	downstreamCC, err := congestionOption(*congestion)
+	if err != nil {
+		return err
+	}
+	upstreamCCName := *upstreamCongestion
+	if upstreamCCName == "" {
+		upstreamCCName = *congestion
+	}
+	upstreamCC, err := congestionOption(upstreamCCName)
+	if err != nil {
+		return fmt.Errorf("-upstream-congestion: %w", err)
+	}
+
+	listener, err := relaynet.Listen(*addr, *wtPath, tlsCfg, logger, downstreamCC)
 	if err != nil {
 		return fmt.Errorf("listen on %s: %w", *addr, err)
 	}
@@ -283,6 +305,8 @@ func run(ctx context.Context, args []string, errOut io.Writer) error {
 		"health_addr", *healthAddr,
 		"health_path", *healthPath,
 		"metrics_path", metricsPath,
+		"congestion", *congestion,
+		"upstream_congestion", upstreamCCName,
 	)
 
 	// Cross-relay dialing: peers advertise a RelayAddr in etcd; the relay dials it
@@ -292,7 +316,7 @@ func run(ctx context.Context, args []string, errOut io.Writer) error {
 	// Dev-grade — verification is skipped (see package doc).
 	clientTLS := relaynet.InsecureClientTLSConfig(relaynet.MOQTQUICALPNs)
 	dialer := func(ctx context.Context, peer string) (session.Conn, error) {
-		return relaynet.DialQUIC(ctx, peer, clientTLS)
+		return relaynet.DialQUIC(ctx, peer, clientTLS, upstreamCC)
 	}
 
 	r := relay.New(listener, relay.Config{
