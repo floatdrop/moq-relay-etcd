@@ -16,8 +16,8 @@ github.com/dunglas/httpsfv v1.1.0 h1:Jw76nAyKWKZKFrpMMcL76y35tOpYHqQPzHQiwDvpe54
 github.com/dunglas/httpsfv v1.1.0/go.mod h1:zID2mqw9mFsnt7YC3vYQ9/cjq30q41W+1AnDwH8TiMg=
 github.com/dustin/go-humanize v1.0.1 h1:GzkhY7T5VNhEkwH0PVJgjz+fX1rhBrR7pRT3mDkpeCY=
 github.com/dustin/go-humanize v1.0.1/go.mod h1:Mu1zIs6XwVuF/gI1OepvI0qD18qycQx+mFykh5fBlto=
-github.com/floatdrop/moq-go v0.0.0-20260831080701-912a67f198be h1:NHohBDifc1dZ1bbvS2s6h/4k0bJNtjcLlEPFcbRXBAc=
-github.com/floatdrop/moq-go v0.0.0-20260831080701-912a67f198be/go.mod h1:nEQ3WquirYAwvGvIo1/8V3QJcA0ivdfKiC+63Ss/DKE=
+github.com/floatdrop/moq-go v0.0.0-20260901070730-17c8493d4f9b h1:SsTEkdPG2l3q4lGXhzI8gaR8dG6JkJmCt6hZQVkLh9s=
+github.com/floatdrop/moq-go v0.0.0-20260901070730-17c8493d4f9b/go.mod h1:iNE+89OdHB6ifd5sJrqGIwIVafLL/PZlCL8g03cV2AI=
 github.com/floatdrop/quic-go v0.0.0-20260831085819-d8e684e730a7 h1:ZPO/Zd4TTGMFsGlvSc/QS6Fz1X5sYOxzQE70z2wwezo=
 github.com/floatdrop/quic-go v0.0.0-20260831085819-d8e684e730a7/go.mod h1:RAro2j2yN9a9EiPACLHT9IB2NXCvGQmmo/alT0yYI0w=
 github.com/go-logr/logr v1.2.2/go.mod h1:jdQByPbusPIv2/zmleS9BjJVeZ6kBagPoEUsqbVz/1A=

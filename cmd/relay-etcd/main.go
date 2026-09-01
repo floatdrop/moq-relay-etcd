@@ -130,7 +130,7 @@ func run(ctx context.Context, args []string, errOut io.Writer) error {
 	// published once on join and republished only when a participant's tracks
 	// change, so on the default 30-second retention it is evicted within the
 	// first minute of a call — and from then on anyone who joins later gets
-	// nothing from the Relative Joining FETCH that backfills it, never learning
+	// nothing from the fill fetch stream that backfills it, never learning
 	// that participant's nickname, version or tracks. cmd/relay has always set
 	// this; this binary did not, which is the difference between a room that
 	// works and one where late arrivals see half of it.

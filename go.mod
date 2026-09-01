@@ -5,7 +5,7 @@ go 1.27
 toolchain go1.27.0
 
 require (
-	github.com/floatdrop/moq-go v0.0.0-20260831080701-912a67f198be
+	github.com/floatdrop/moq-go v0.0.0-20260901070730-17c8493d4f9b
 	github.com/prometheus/client_golang v1.23.2
 	github.com/quic-go/quic-go v0.61.0
 	go.etcd.io/etcd/client/v3 v3.7.1
