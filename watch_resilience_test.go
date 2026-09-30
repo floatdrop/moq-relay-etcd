@@ -76,12 +76,12 @@ func TestWatchNamespacesSeedsSnapshot(t *testing.T) {
 		t.Fatalf("WatchNamespaces: %v", err)
 	}
 
-	got := receiveNamespace(t, ch)
-	if got.Op != discovery.OpPublish {
-		t.Errorf("snapshot Op = %v, want publish", got.Op)
+	snapshot := awaitNamespaceSnapshot(t, ch)
+	if len(snapshot) != 1 {
+		t.Fatalf("snapshot = %v, want exactly the seeded advertisement", snapshot)
 	}
-	if got.Info.RelayAddr != "relay-A" {
-		t.Errorf("snapshot RelayAddr = %q, want relay-A", got.Info.RelayAddr)
+	if snapshot[0].RelayAddr != "relay-A" {
+		t.Errorf("snapshot RelayAddr = %q, want relay-A", snapshot[0].RelayAddr)
 	}
 
 	// And the watch still follows live changes after replaying the snapshot.
@@ -129,8 +129,12 @@ func TestWatchSkipsUndecodableEntries(t *testing.T) {
 			t.Fatalf("WatchNamespaces: %v", err)
 		}
 
-		// The corrupt entry yields nothing, but the watch is alive: a good
-		// advertisement published afterwards still arrives.
+		// The corrupt entry yields nothing, so the snapshot comes back empty.
+		if snapshot := awaitNamespaceSnapshot(t, ch); len(snapshot) != 0 {
+			t.Errorf("snapshot = %v, want empty — the corrupt entry was delivered", snapshot)
+		}
+		// But the watch is alive: a good advertisement published afterwards
+		// still arrives.
 		if err := s.PublishNamespace(ctx, discovery.NamespaceInfo{
 			Prefix:    ns("chat"),
 			RelayAddr: "relay-B",
@@ -154,6 +158,7 @@ func TestWatchSkipsUndecodableEntries(t *testing.T) {
 		if err != nil {
 			t.Fatalf("WatchNamespaces: %v", err)
 		}
+		awaitNamespaceSnapshot(t, ch) // empty; both writes below are live
 
 		// A PUT the Store cannot decode, arriving while the watch is running.
 		if _, err := cli.Put(ctx, prefix+"n/deadbeef/relay-X", "{not json"); err != nil {
@@ -188,6 +193,7 @@ func TestWatchDeliversUnpublishOnDelete(t *testing.T) {
 	if err != nil {
 		t.Fatalf("WatchNamespaces: %v", err)
 	}
+	awaitNamespaceSnapshot(t, ch) // empty; the publish below is live
 	if err := s.PublishNamespace(ctx, discovery.NamespaceInfo{
 		Prefix:    ns("chat"),
 		RelayAddr: "relay-A",
@@ -212,6 +218,101 @@ func TestWatchDeliversUnpublishOnDelete(t *testing.T) {
 	}
 }
 
+// TestWatchEndsSnapshotWithSnapshotDone pins the snapshot boundary the
+// DiscoveryStore contract requires: the seeded advertisements, then exactly one
+// OpSnapshotDone, then live events.
+//
+// This is worth asserting on its own because omitting the marker breaks nothing
+// visibly here — the events still flow — but leaves the relay's watch consumer
+// permanently unsynced. It applies the snapshot as a whole at OpSnapshotDone
+// and only forwards live events afterwards, so without the marker a relay never
+// learns a single remote namespace.
+func TestWatchEndsSnapshotWithSnapshotDone(t *testing.T) {
+	s, _ := newStoreAndClient(t, "/snapdone/")
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	// Advertised BEFORE the watch, so it lands in the snapshot.
+	if err := s.PublishNamespace(ctx, discovery.NamespaceInfo{
+		Prefix:    ns("chat"),
+		RelayAddr: "relay-A",
+	}); err != nil {
+		t.Fatalf("seed PublishNamespace: %v", err)
+	}
+
+	ch, err := s.WatchNamespaces(ctx)
+	if err != nil {
+		t.Fatalf("WatchNamespaces: %v", err)
+	}
+
+	if first := receiveNamespace(t, ch); first.Op != discovery.OpPublish ||
+		first.Info.RelayAddr != "relay-A" {
+		t.Fatalf("first event = %v from %q, want publish from relay-A",
+			first.Op, first.Info.RelayAddr)
+	}
+	if done := receiveNamespace(t, ch); done.Op != discovery.OpSnapshotDone {
+		t.Fatalf("second event Op = %v, want snapshot-done to close the snapshot", done.Op)
+	}
+
+	// Everything after the marker is a live change, and there is only ever one
+	// marker per watch — a second would make the consumer re-apply a partial
+	// snapshot over its synced state.
+	if err := s.PublishNamespace(ctx, discovery.NamespaceInfo{
+		Prefix:    ns("chat"),
+		RelayAddr: "relay-B",
+	}); err != nil {
+		t.Fatalf("live PublishNamespace: %v", err)
+	}
+	live := receiveNamespace(t, ch)
+	if live.Op != discovery.OpPublish || live.Info.RelayAddr != "relay-B" {
+		t.Errorf("live event = %v from %q, want publish from relay-B",
+			live.Op, live.Info.RelayAddr)
+	}
+}
+
+// TestWatchEndsOnSlowConsumer covers the other half of the contract: a live
+// event that does not fit the buffer ends the watch instead of being dropped.
+//
+// Dropping is the dangerous option. The consumer would keep reading a channel
+// that silently no longer reflects the cluster — a missed OpUnpublish would
+// leave it routing to a relay that is gone, forever. Closing the channel is the
+// signal it needs to re-watch, which re-snapshots it back to the truth.
+func TestWatchEndsOnSlowConsumer(t *testing.T) {
+	s, _ := newStoreAndClient(t, "/slowwatcher/", etcdstore.WithWatchBufferSize(1))
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	ch, err := s.WatchNamespaces(ctx)
+	if err != nil {
+		t.Fatalf("WatchNamespaces: %v", err)
+	}
+	awaitNamespaceSnapshot(t, ch) // empty, and leaves the buffer drained
+
+	// Publish more than the buffer holds without reading any of it.
+	for _, addr := range []string{"relay-A", "relay-B", "relay-C", "relay-D"} {
+		if err := s.PublishNamespace(ctx, discovery.NamespaceInfo{
+			Prefix:    ns("chat"),
+			RelayAddr: addr,
+		}); err != nil {
+			t.Fatalf("PublishNamespace %s: %v", addr, err)
+		}
+	}
+
+	// The watch ends: reading drains whatever fitted, then sees a closed
+	// channel rather than blocking forever on events that were dropped.
+	deadline := time.After(5 * time.Second)
+	for {
+		select {
+		case _, ok := <-ch:
+			if !ok {
+				return // closed — the watch ended, as it must
+			}
+		case <-deadline:
+			t.Fatal("watch did not end after overflowing a slow consumer")
+		}
+	}
+}
+
 // TestWithWatchBufferSize covers the option and its documented guard: a
 // non-positive size falls back to the default rather than creating an
 // unbuffered channel that would stall the watch pump.
@@ -224,6 +325,10 @@ func TestWithWatchBufferSize(t *testing.T) {
 		if err != nil {
 			t.Fatalf("WatchNamespaces(size=%d): %v", size, err)
 		}
+		// Drain the (empty) snapshot before publishing, so the live event below
+		// meets an empty buffer. A live event that does not fit now ends the
+		// watch, and with size=1 an undrained OpSnapshotDone would fill it.
+		awaitNamespaceSnapshot(t, ch)
 		if err := s.PublishNamespace(ctx, discovery.NamespaceInfo{
 			Prefix:    ns("chat"),
 			RelayAddr: "relay-A",
@@ -269,6 +374,10 @@ func TestWatchTracksSkipsUndecodableEntries(t *testing.T) {
 	ch, err := s.WatchTracks(ctx)
 	if err != nil {
 		t.Fatalf("WatchTracks: %v", err)
+	}
+	// The corrupt seed yields nothing, so the snapshot comes back empty.
+	if snapshot := awaitTrackSnapshot(t, ch); len(snapshot) != 0 {
+		t.Errorf("snapshot = %v, want empty — the corrupt entry was delivered", snapshot)
 	}
 
 	// A live PUT the Store cannot decode either, then a good one.

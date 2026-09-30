@@ -9,22 +9,24 @@ import (
 )
 
 // WatchTracks delivers the current track advertisements under this store's
-// track prefix as an OpPublish snapshot, then streams every subsequent
-// Publish/Unpublish the etcd cluster observes there. The returned channel
-// closes when ctx is cancelled or the store is closed.
+// track prefix as an OpPublish snapshot terminated by one OpSnapshotDone, then
+// streams every subsequent Publish/Unpublish the etcd cluster observes there.
+// The returned channel closes when ctx is cancelled, the store is closed, or a
+// live event finds the buffer full.
 //
 // The snapshot→follow handoff is gapless: the snapshot is read at a single etcd
 // revision and the follow Watch starts at exactly the next revision (WithRev),
 // so no event between the two is missed or duplicated. Snapshot events are
 // delivered in full (a blocking, cancellable send — the follow Watch is not yet
-// being read, so nothing back-pressures etcd); after the snapshot, delivery is
-// non-blocking per the slow-consumer contract, dropping with a logged warning
-// rather than stalling the etcd watch loop.
+// being read, so nothing back-pressures etcd); after the snapshot, a live event
+// that does not fit ends the watch rather than stalling the etcd watch loop or
+// dropping silently, so the consumer re-watches and re-snapshots.
 func (s *Store) WatchTracks(ctx context.Context) (<-chan discovery.TrackEvent, error) {
 	return startWatch(ctx, s, watchCodec[discovery.TrackEvent]{
-		dir:      s.root + "t/",
-		snapshot: s.trackSnapshot,
-		event:    s.trackEvent,
+		dir:          s.root + "t/",
+		snapshot:     s.trackSnapshot,
+		event:        s.trackEvent,
+		snapshotDone: discovery.TrackEvent{Op: discovery.OpSnapshotDone},
 	})
 }
 
@@ -32,20 +34,23 @@ func (s *Store) WatchTracks(ctx context.Context) (<-chan discovery.TrackEvent, e
 // over namespace events.
 func (s *Store) WatchNamespaces(ctx context.Context) (<-chan discovery.NamespaceEvent, error) {
 	return startWatch(ctx, s, watchCodec[discovery.NamespaceEvent]{
-		dir:      s.root + "n/",
-		snapshot: s.namespaceSnapshot,
-		event:    s.namespaceEvent,
+		dir:          s.root + "n/",
+		snapshot:     s.namespaceSnapshot,
+		event:        s.namespaceEvent,
+		snapshotDone: discovery.NamespaceEvent{Op: discovery.OpSnapshotDone},
 	})
 }
 
 // watchCodec adapts the generic snapshot-then-follow machinery to a concrete
 // event type: dir is the key subtree to snapshot and follow; snapshot turns a
 // stored value into an OpPublish event; event turns a raw watch event into a
-// publish/unpublish event.
+// publish/unpublish event; snapshotDone is the OpSnapshotDone event that ends
+// the snapshot.
 type watchCodec[T any] struct {
-	dir      string
-	snapshot func(value []byte) (T, bool)
-	event    func(ev *clientv3.Event) (T, bool)
+	dir          string
+	snapshot     func(value []byte) (T, bool)
+	event        func(ev *clientv3.Event) (T, bool)
+	snapshotDone T
 }
 
 // startWatch opens the out channel, binds a cancellable child context, and
@@ -63,10 +68,13 @@ func startWatch[T any](ctx context.Context, s *Store, c watchCodec[T]) (<-chan T
 
 // pump implements the snapshot-then-follow watch shared by WatchTracks and
 // WatchNamespaces. It reads the current subtree at one revision, emits it as
-// OpPublish events, then follows from exactly the next revision (WithRev) so the
-// handoff is gapless. Snapshot delivery blocks (nothing back-pressures etcd
-// yet); follow delivery is non-blocking and drops on a full buffer per the
-// slow-consumer contract. It closes out and cancels the watch ctx on return.
+// OpPublish events followed by one OpSnapshotDone, then follows from exactly the
+// next revision (WithRev) so the handoff is gapless. Snapshot delivery blocks
+// (nothing back-pressures etcd yet); after the snapshot, a live event that does
+// not fit the buffer ends the watch rather than being dropped, per the
+// slow-consumer contract — the consumer sees the close and re-watches, which
+// re-snapshots it back to a correct view. It closes out and cancels the watch
+// ctx on return.
 func pump[T any](ctx context.Context, s *Store, cancel context.CancelFunc, out chan T, c watchCodec[T]) {
 	defer close(out)
 	defer cancel()
@@ -84,6 +92,11 @@ func pump[T any](ctx context.Context, s *Store, cancel context.CancelFunc, out c
 		if !sendSnapshot(ctx, s.done, out, ev) {
 			return
 		}
+	}
+	// Ends the snapshot: the consumer applies it as a whole here and treats
+	// everything after as a live change. Without it the relay never syncs.
+	if !sendSnapshot(ctx, s.done, out, c.snapshotDone) {
+		return
 	}
 
 	wch := s.cli.Watch(ctx, c.dir,
@@ -106,7 +119,10 @@ func pump[T any](ctx context.Context, s *Store, cancel context.CancelFunc, out c
 				select {
 				case out <- e:
 				default:
-					s.log.WarnContext(ctx, "etcd discovery: dropped event on slow watcher", "dir", c.dir)
+					// Dropping would leave the consumer silently stale, so end
+					// the watch instead and let it re-snapshot.
+					s.log.WarnContext(ctx, "etcd discovery: ended the watch of a slow watcher", "dir", c.dir)
+					return
 				}
 			}
 		}

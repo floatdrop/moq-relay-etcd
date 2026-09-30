@@ -5,9 +5,9 @@ go 1.27
 toolchain go1.27.0
 
 require (
-	github.com/floatdrop/moq-go v0.0.0-20260901070730-17c8493d4f9b
+	github.com/floatdrop/moq-go v0.0.0-20260929143613-9fc59f9c82fc
 	github.com/prometheus/client_golang v1.23.2
-	github.com/quic-go/quic-go v0.61.0
+	github.com/quic-go/quic-go v0.63.0
 	go.etcd.io/etcd/client/v3 v3.7.1
 	go.etcd.io/etcd/server/v3 v3.7.1
 )
@@ -18,7 +18,7 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/coreos/go-semver v0.3.1 // indirect
 	github.com/coreos/go-systemd/v22 v22.7.0 // indirect
-	github.com/dunglas/httpsfv v1.1.0 // indirect
+	github.com/dunglas/httpsfv v1.1.1 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
@@ -36,7 +36,7 @@ require (
 	github.com/prometheus/common v0.67.5 // indirect
 	github.com/prometheus/procfs v0.16.1 // indirect
 	github.com/quic-go/qpack v0.6.0 // indirect
-	github.com/quic-go/webtransport-go v0.12.0 // indirect
+	github.com/quic-go/webtransport-go v0.13.0 // indirect
 	github.com/sirupsen/logrus v1.9.4 // indirect
 	github.com/soheilhy/cmux v0.1.5 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
@@ -61,7 +61,7 @@ require (
 	go.yaml.in/yaml/v2 v2.4.3 // indirect
 	golang.org/x/crypto v0.54.0 // indirect
 	golang.org/x/net v0.56.0 // indirect
-	golang.org/x/sync v0.22.0 // indirect
+	golang.org/x/sync v0.23.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/text v0.40.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
@@ -74,4 +74,4 @@ require (
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
 
-replace github.com/quic-go/quic-go => github.com/floatdrop/quic-go v0.0.0-20260831085819-d8e684e730a7
+replace github.com/quic-go/quic-go => github.com/floatdrop/quic-go v0.0.0-20260926120704-1a1dca264af0

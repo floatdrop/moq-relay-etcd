@@ -24,10 +24,17 @@
 //
 // WatchTracks / WatchNamespaces are gapless snapshot-then-follow streams: each
 // reads the current advertisements at one etcd revision, emits them as
-// OpPublish events, then follows from exactly the next revision (clientv3
-// WithRev). Nothing lands between the snapshot and the follow, so a consumer
-// gets current state plus every later change from one call, with no separate
-// Find to race against.
+// OpPublish events closed by a single OpSnapshotDone, then follows from exactly
+// the next revision (clientv3 WithRev). Nothing lands between the snapshot and
+// the follow, so a consumer gets current state plus every later change from one
+// call, with no separate Find to race against. OpSnapshotDone is the boundary
+// the consumer applies the snapshot at, so it is emitted even when the snapshot
+// is empty.
+//
+// A live event that does not fit the watch buffer ends that watch (the channel
+// closes) rather than being dropped: a consumer left reading a stream that has
+// silently lost an event would route to a relay that is gone, whereas a closed
+// channel tells it to re-watch and re-snapshot.
 //
 // # Liveness
 //

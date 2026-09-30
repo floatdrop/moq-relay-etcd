@@ -242,6 +242,11 @@ func TestEtcdStore(t *testing.T) {
 			t.Fatalf("UnpublishTrack: %v", err)
 		}
 
+		// The watch predates both writes, so its snapshot is empty and both
+		// arrive as live events.
+		if snapshot := awaitTrackSnapshot(t, ch); len(snapshot) != 0 {
+			t.Errorf("snapshot = %v, want empty", snapshot)
+		}
 		first := receiveTrack(t, ch)
 		if first.Op != discovery.OpPublish {
 			t.Errorf("first event Op = %v, want publish", first.Op)
@@ -271,6 +276,10 @@ func TestEtcdStore(t *testing.T) {
 		_ = s.PublishNamespace(ctx, discovery.NamespaceInfo{Prefix: ns("chat"), RelayAddr: "relay-A"})
 		_ = s.UnpublishNamespace(ctx, ns("chat"), "relay-A")
 
+		// As above: the watch predates both writes, so the snapshot is empty.
+		if snapshot := awaitNamespaceSnapshot(t, ch); len(snapshot) != 0 {
+			t.Errorf("snapshot = %v, want empty", snapshot)
+		}
 		first := receiveNamespace(t, ch)
 		if first.Op != discovery.OpPublish {
 			t.Errorf("first Op = %v, want publish", first.Op)
@@ -303,16 +312,13 @@ func TestEtcdStore(t *testing.T) {
 			t.Fatalf("WatchTracks: %v", err)
 		}
 
-		// Snapshot: both seeded advertisements arrive as OpPublish, any order.
+		// Snapshot: both seeded advertisements arrive as OpPublish, any order,
+		// terminated by the OpSnapshotDone that awaitTrackSnapshot consumes.
 		seen := map[string]bool{}
-		for range 2 {
-			ev := receiveTrack(t, ch)
-			if ev.Op != discovery.OpPublish {
-				t.Errorf("snapshot event Op = %v, want publish", ev.Op)
-			}
-			seen[ev.Info.RelayAddr] = true
+		for _, info := range awaitTrackSnapshot(t, ch) {
+			seen[info.RelayAddr] = true
 		}
-		if !seen["relay-A"] || !seen["relay-B"] {
+		if len(seen) != 2 || !seen["relay-A"] || !seen["relay-B"] {
 			t.Errorf("snapshot addrs = %v, want relay-A and relay-B", seen)
 		}
 
@@ -385,6 +391,41 @@ func TestEtcdStore(t *testing.T) {
 			t.Errorf("second Close = %v, want nil", err)
 		}
 	})
+}
+
+// awaitTrackSnapshot drains the watch's initial snapshot and returns the
+// advertisements it carried. It consumes the terminating OpSnapshotDone, so the
+// next receive on ch is the first live event — which is what a test asserting
+// on follow behaviour wants, and what the relay itself keys its sync on.
+func awaitTrackSnapshot(t *testing.T, ch <-chan discovery.TrackEvent) []discovery.TrackInfo {
+	t.Helper()
+	var snapshot []discovery.TrackInfo
+	for {
+		ev := receiveTrack(t, ch)
+		if ev.Op == discovery.OpSnapshotDone {
+			return snapshot
+		}
+		if ev.Op != discovery.OpPublish {
+			t.Fatalf("snapshot event Op = %v, want publish or snapshot-done", ev.Op)
+		}
+		snapshot = append(snapshot, ev.Info)
+	}
+}
+
+// awaitNamespaceSnapshot — see [awaitTrackSnapshot].
+func awaitNamespaceSnapshot(t *testing.T, ch <-chan discovery.NamespaceEvent) []discovery.NamespaceInfo {
+	t.Helper()
+	var snapshot []discovery.NamespaceInfo
+	for {
+		ev := receiveNamespace(t, ch)
+		if ev.Op == discovery.OpSnapshotDone {
+			return snapshot
+		}
+		if ev.Op != discovery.OpPublish {
+			t.Fatalf("snapshot event Op = %v, want publish or snapshot-done", ev.Op)
+		}
+		snapshot = append(snapshot, ev.Info)
+	}
 }
 
 func receiveTrack(t *testing.T, ch <-chan discovery.TrackEvent) discovery.TrackEvent {
